@@ -33,7 +33,7 @@ steps:
       - name: docker
         path: /var/run/docker.sock
     settings:
-      base: ubuntu:20.04
+      base: registry-vpc.cn-qingdao.aliyuncs.com/wod/ubuntu:22.04-arm64
       dockerfile: .beagle/dockerfile
       repo: wod/ascend-device-plugin
       Version: "v1.2.0-beagle" # 请在这里调整最终的版本号
