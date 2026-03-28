@@ -1,0 +1,12 @@
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update -y && apt install -y tzdata ca-certificates && rm -rf /var/lib/apt/lists/*
+
+ENV LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common
+
+# 将流水线上一步构建出的二进制文件直接 Copy 进镜像中
+COPY ascend-device-plugin /usr/local/bin/ascend-device-plugin
+RUN chmod +x /usr/local/bin/ascend-device-plugin
+
+ENTRYPOINT ["ascend-device-plugin"]

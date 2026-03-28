@@ -20,6 +20,13 @@ steps:
       proxy:
         from_secret: SOCKS5_PROXY
 
+  - name: build
+    image: registry-vpc.cn-qingdao.aliyuncs.com/wod/golang:1.24
+    environment:
+      BUILD_VERSION: vxxx-beagle
+    commands:
+      - sh .beagle/build.sh
+
   - name: docker-arm64
     image: registry-vpc.cn-qingdao.aliyuncs.com/wod/devops-docker:1.0
     volumes:
@@ -27,7 +34,7 @@ steps:
         path: /var/run/docker.sock
     settings:
       base: ubuntu:20.04
-      dockerfile: Dockerfile
+      dockerfile: .beagle/dockerfile
       repo: wod/ascend-device-plugin
       Version: "vxxx-beagle" # 请在这里调整最终的版本号
       channel: arm64
@@ -37,6 +44,7 @@ steps:
         from_secret: REGISTRY_USER_ALIYUN
       registry_password:
         from_secret: REGISTRY_PASSWORD_ALIYUN
+
 ---
 kind: pipeline
 name: main
