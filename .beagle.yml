@@ -21,7 +21,7 @@ steps:
         from_secret: SOCKS5_PROXY
 
   - name: build
-    image: registry-vpc.cn-qingdao.aliyuncs.com/wod/golang:1.24
+    image: registry-vpc.cn-qingdao.aliyuncs.com/wod/golang:1.25
     environment:
       BUILD_VERSION: v1.2.0-beagle
     commands:
@@ -36,7 +36,7 @@ steps:
       base: registry-vpc.cn-qingdao.aliyuncs.com/wod/ubuntu:22.04-arm64
       dockerfile: .beagle/dockerfile
       repo: wod/ascend-device-plugin
-      Version: "v1.2.0-beagle" # 请在这里调整最终的版本号
+      Version: "v1.2.0" # 请在这里调整最终的版本号
       channel: arm64
       args: "TARGETOS=linux,TARGETARCH=arm64"
       registry: registry-vpc.cn-qingdao.aliyuncs.com
