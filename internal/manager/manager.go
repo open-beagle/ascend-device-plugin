@@ -41,8 +41,10 @@ type Device struct {
 type AscendManager struct {
 	mgr *devmanager.DeviceManager
 	//nodeName string
-	config internal.VNPUConfig
-	devs   []*Device
+	config          internal.VNPUConfig
+	devs            []*Device
+	vDeviceCount    int
+	currentTemplate *internal.Template
 }
 
 func NewAscendManager() (*AscendManager, error) {
@@ -83,7 +85,51 @@ func (am *AscendManager) LoadConfig(path string) error {
 		return am.config.Templates[i].Memory < am.config.Templates[j].Memory
 	})
 	klog.Infof("load config: %v", am.config)
+	am.ApplySplitCount(0) // 0 implies default split logic
 	return nil
+}
+
+// ApplySplitCount applies the dynamic split-count annotation to discover the matching template.
+func (am *AscendManager) ApplySplitCount(splitCount uint) bool {
+	if len(am.config.Templates) == 0 {
+		am.currentTemplate = nil
+		if am.vDeviceCount != 1 {
+			am.vDeviceCount = 1
+			return true
+		}
+		return false
+	}
+
+	var selectedTemplate *internal.Template
+	if splitCount == 0 {
+		// If 0 (annotation removed), fallback to the smallest template (original behavior)
+		selectedTemplate = &am.config.Templates[0]
+	} else {
+		targetMem := am.config.MemoryAllocatable / int64(splitCount)
+		for i := range am.config.Templates {
+			if am.config.Templates[i].Memory >= targetMem {
+				selectedTemplate = &am.config.Templates[i]
+				break
+			}
+		}
+		if selectedTemplate == nil {
+			// Fallback if TargetMem is too big (shouldn't happen since valid templates are within capacity)
+			// or if there's no template big enough. Actually if splitCount is very large, TargetMem is tiny.
+			// The sorted array has the smallest template first. It should hit index 0 immediately if TargetMem is tiny.
+			selectedTemplate = &am.config.Templates[0]
+		}
+	}
+
+	newVCount := int(am.config.MemoryAllocatable / selectedTemplate.Memory)
+	if am.currentTemplate == selectedTemplate && am.vDeviceCount == newVCount {
+		return false // No change
+	}
+
+	am.currentTemplate = selectedTemplate
+	am.vDeviceCount = newVCount
+	klog.Infof("Applied dynamic split-count=%d, selected template='%s' (Memory: %d, AICore: %d), resulting vDeviceCount=%d",
+		splitCount, selectedTemplate.Name, selectedTemplate.Memory, selectedTemplate.AICore, am.vDeviceCount)
+	return true
 }
 
 func (am *AscendManager) CommonWord() string {
@@ -94,11 +140,15 @@ func (am *AscendManager) ResourceName() string {
 	return am.config.ResourceName
 }
 
-func (am *AscendManager) VDeviceCount() int {
-	if len(am.config.Templates) == 0 {
-		return 1
+func (am *AscendManager) CurrentTemplateName() string {
+	if am.currentTemplate != nil {
+		return am.currentTemplate.Name
 	}
-	return int(am.config.MemoryAllocatable / am.config.Templates[0].Memory)
+	return ""
+}
+
+func (am *AscendManager) VDeviceCount() int {
+	return am.vDeviceCount
 }
 
 func (am *AscendManager) UpdateDevice() error {

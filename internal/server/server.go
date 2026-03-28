@@ -23,18 +23,22 @@ import (
 	"net"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Project-HAMi/HAMi/pkg/device"
 	"github.com/Project-HAMi/HAMi/pkg/device/ascend"
 	"github.com/Project-HAMi/HAMi/pkg/util"
+	"github.com/Project-HAMi/HAMi/pkg/util/client"
 	"github.com/Project-HAMi/HAMi/pkg/util/nodelock"
 	"github.com/Project-HAMi/ascend-device-plugin/internal/manager"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
@@ -56,11 +60,12 @@ type PluginServer struct {
 	registerAnno  string
 	handshakeAnno string
 	allocAnno     string
-	grpcServer    *grpc.Server
-	mgr           *manager.AscendManager
-	socket        string
-	stopCh        chan interface{}
-	healthCh      chan int32
+	grpcServer             *grpc.Server
+	mgr                    *manager.AscendManager
+	socket                 string
+	stopCh                 chan interface{}
+	healthCh               chan int32
+	deviceSplitCountChange chan bool
 }
 
 func NewPluginServer(mgr *manager.AscendManager, nodeName string) (*PluginServer, error) {
@@ -69,11 +74,12 @@ func NewPluginServer(mgr *manager.AscendManager, nodeName string) (*PluginServer
 		registerAnno:  fmt.Sprintf("hami.io/node-register-%s", mgr.CommonWord()),
 		handshakeAnno: fmt.Sprintf("hami.io/node-handshake-%s", mgr.CommonWord()),
 		allocAnno:     fmt.Sprintf("huawei.com/%s", mgr.CommonWord()),
-		grpcServer:    grpc.NewServer(),
-		mgr:           mgr,
-		socket:        path.Join(v1beta1.DevicePluginPath, fmt.Sprintf("%s.sock", mgr.CommonWord())),
-		stopCh:        make(chan interface{}),
-		healthCh:      make(chan int32),
+		grpcServer:             grpc.NewServer(),
+		mgr:                    mgr,
+		socket:                 path.Join(v1beta1.DevicePluginPath, fmt.Sprintf("%s.sock", mgr.CommonWord())),
+		stopCh:                 make(chan interface{}),
+		healthCh:               make(chan int32),
+		deviceSplitCountChange: make(chan bool, 1),
 	}, nil
 }
 
@@ -92,6 +98,7 @@ func (ps *PluginServer) Start() error {
 		return err
 	}
 	go ps.watchAndRegister()
+	go ps.watchSplitCountAnnotation()
 	return nil
 }
 
@@ -275,6 +282,75 @@ func (ps *PluginServer) watchAndRegister() {
 	}
 }
 
+// watchSplitCountAnnotation watches the current Node and applies split-count updates immediately.
+func (ps *PluginServer) watchSplitCountAnnotation() {
+	klog.Info("Starting watchSplitCountAnnotation")
+	kubeClient := client.GetClient()
+	if kubeClient == nil {
+		klog.Warningf("KubeClient not initialized, cannot watch node annotations")
+		return
+	}
+	informerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, time.Hour*1)
+	informerFactory.Core().V1().Nodes().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			n, ok := obj.(*v1.Node)
+			if !ok || n.Name != ps.nodeName {
+				return
+			}
+			ps.applySplitCountFromNode(n)
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			oldN, ok1 := oldObj.(*v1.Node)
+			newN, ok2 := newObj.(*v1.Node)
+			if !ok1 || !ok2 || newN.Name != ps.nodeName {
+				return
+			}
+			oldVal := ""
+			if oldN.Annotations != nil {
+				oldVal = strings.TrimSpace(oldN.Annotations["hami.io/device-split-count"])
+			}
+			newVal := ""
+			if newN.Annotations != nil {
+				newVal = strings.TrimSpace(newN.Annotations["hami.io/device-split-count"])
+			}
+			if oldVal == newVal {
+				return
+			}
+			ps.applySplitCountFromNode(newN)
+		},
+	})
+
+	stopWatchCh := make(chan struct{})
+	go func() {
+		informerFactory.Start(stopWatchCh)
+		informerFactory.WaitForCacheSync(stopWatchCh)
+	}()
+
+	<-ps.stopCh
+	close(stopWatchCh)
+}
+
+func (ps *PluginServer) applySplitCountFromNode(node *v1.Node) {
+	val := ""
+	if node.Annotations != nil {
+		val = strings.TrimSpace(node.Annotations["hami.io/device-split-count"])
+	}
+	var splitCount uint = 0
+	if val != "" {
+		if n, err := strconv.ParseUint(val, 10, 32); err == nil {
+			splitCount = uint(n)
+		}
+	}
+	changed := ps.mgr.ApplySplitCount(splitCount)
+	if changed {
+		klog.Infof("Split count updated on node annotation to %v, triggering reload", val)
+		select {
+		case ps.deviceSplitCountChange <- true:
+		default:
+		}
+	}
+}
+
 func (ps *PluginServer) parsePodAnnotation(pod *v1.Pod) ([]int32, []string, error) {
 	anno, ok := pod.Annotations[ps.allocAnno]
 	if !ok {
@@ -337,6 +413,9 @@ func (ps *PluginServer) ListAndWatch(e *v1beta1.Empty, s v1beta1.DevicePlugin_Li
 			return nil
 		case <-ps.healthCh:
 			_ = s.Send(&v1beta1.ListAndWatchResponse{Devices: ps.apiDevices()})
+		case <-ps.deviceSplitCountChange:
+			klog.Infof("Runtime configuration changed, updating device list for '%s'", ps.mgr.ResourceName())
+			_ = s.Send(&v1beta1.ListAndWatchResponse{Devices: ps.apiDevices()})
 		}
 	}
 }
@@ -381,6 +460,9 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	}
 	resp.Envs = make(map[string]string)
 	resp.Envs["ASCEND_VISIBLE_DEVICES"] = ascendVisibleDevices
+	if ascendVNPUSpec == "" && ps.mgr.CurrentTemplateName() != "" {
+		ascendVNPUSpec = ps.mgr.CurrentTemplateName()
+	}
 	if ascendVNPUSpec != "" {
 		resp.Envs["ASCEND_VNPU_SPECS"] = ascendVNPUSpec
 	}
