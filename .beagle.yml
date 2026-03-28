@@ -23,7 +23,7 @@ steps:
   - name: build
     image: registry-vpc.cn-qingdao.aliyuncs.com/wod/golang:1.24
     environment:
-      BUILD_VERSION: vxxx-beagle
+      BUILD_VERSION: v1.2.0-beagle
     commands:
       - sh .beagle/build.sh
 
@@ -36,7 +36,7 @@ steps:
       base: ubuntu:20.04
       dockerfile: .beagle/dockerfile
       repo: wod/ascend-device-plugin
-      Version: "vxxx-beagle" # 请在这里调整最终的版本号
+      Version: "v1.2.0-beagle" # 请在这里调整最终的版本号
       channel: arm64
       args: "TARGETOS=linux,TARGETARCH=arm64"
       registry: registry-vpc.cn-qingdao.aliyuncs.com
@@ -53,28 +53,20 @@ trigger:
   branch:
     - main
 
-volumes:
-  - name: docker
-    host:
-      path: /var/run/docker.sock
-
 clone:
   disable: true
 
 steps:
   - name: harbor
     image: registry-vpc.cn-qingdao.aliyuncs.com/wod/devops-docker-tag:1.0
-    volumes:
-      - name: docker
-        path: /var/run/docker.sock
     environment:
       REGISTRY_USER:
         from_secret: REGISTRY_USER_ALIYUN
       REGISTRY_PASSWORD:
         from_secret: REGISTRY_PASSWORD_ALIYUN
     settings:
-      source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:vxxx-beagle-arm64
-      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:vxxx-beagle
+      source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-beagle-arm64
+      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-beagle
       registry: registry-vpc.cn-qingdao.aliyuncs.com
 
 ---
