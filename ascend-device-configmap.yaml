@@ -39,10 +39,6 @@ data:
       aiCore: 24
       aiCPU: 6
       templates:
-        - name: vir03_1c_8g
-          memory: 8192
-          aiCore: 3
-          aiCPU: 1
         - name: vir06_1c_16g
           memory: 16384
           aiCore: 6

@@ -65,8 +65,8 @@ steps:
       REGISTRY_PASSWORD:
         from_secret: REGISTRY_PASSWORD_ALIYUN
     settings:
-      source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-beagle-arm64
-      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-beagle
+      source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-arm64
+      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0
       registry: registry-vpc.cn-qingdao.aliyuncs.com
 
 ---
