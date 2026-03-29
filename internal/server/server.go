@@ -452,15 +452,21 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	for i := 1; i < len(IDs); i++ {
 		ascendVisibleDevices = fmt.Sprintf("%s,%d", ascendVisibleDevices, IDs[i])
 	}
+	// Determine if this is a whole-card allocation (all temps empty) or vNPU allocation.
+	// Only set ASCEND_VNPU_SPECS when we are in vNPU mode.
+	hasAnyTemp := false
 	for i := 0; i < len(temps); i++ {
 		if temps[i] != "" {
 			ascendVNPUSpec = temps[i]
+			hasAnyTemp = true
 			break
 		}
 	}
 	resp.Envs = make(map[string]string)
 	resp.Envs["ASCEND_VISIBLE_DEVICES"] = ascendVisibleDevices
-	if ascendVNPUSpec == "" && ps.mgr.CurrentTemplateName() != "" {
+	// Fallback to CurrentTemplateName only when in vNPU mode (at least one temp was expected
+	// but not matched). Do NOT fallback for whole-card allocation (all temps empty).
+	if ascendVNPUSpec == "" && hasAnyTemp && ps.mgr.CurrentTemplateName() != "" {
 		ascendVNPUSpec = ps.mgr.CurrentTemplateName()
 	}
 	if ascendVNPUSpec != "" {
