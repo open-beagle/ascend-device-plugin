@@ -466,6 +466,26 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	if ascendVNPUSpec != "" {
 		resp.Envs["ASCEND_VNPU_SPECS"] = ascendVNPUSpec
 	}
+
+	// 注入显存申请值 env + npu-smi mount
+	memoryMB := getMemoryLimitFromPod(pod, ps.mgr.ResourceMemoryName())
+	if memoryMB > 0 {
+		resp.Envs[ps.mgr.ResourceMemoryName()] = strconv.FormatInt(memoryMB, 10)
+		resp.Envs["REAL_NPU_SMI_PATH"] = "/usr/local/sbin/npu-smi.real"
+	}
+	resp.Mounts = append(resp.Mounts,
+		&v1beta1.Mount{
+			ContainerPath: "/usr/local/sbin/npu-smi",
+			HostPath:      "/usr/local/sbin/npu-smi",
+			ReadOnly:      true,
+		},
+		&v1beta1.Mount{
+			ContainerPath: "/usr/local/sbin/npu-smi.real",
+			HostPath:      "/usr/local/sbin/npu-smi.real",
+			ReadOnly:      true,
+		},
+	)
+
 	klog.V(5).Infof("allocate response: %v", resp)
 	success = true
 	return &v1beta1.AllocateResponse{ContainerResponses: []*v1beta1.ContainerAllocateResponse{&resp}}, nil
@@ -473,4 +493,17 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 
 func (ps *PluginServer) PreStartContainer(context.Context, *v1beta1.PreStartContainerRequest) (*v1beta1.PreStartContainerResponse, error) {
 	return &v1beta1.PreStartContainerResponse{}, nil
+}
+func getMemoryLimitFromPod(pod *v1.Pod, resourceMemoryName string) int64 {
+	if resourceMemoryName == "" {
+		return 0
+	}
+	for _, c := range pod.Spec.Containers {
+		for rName, rVal := range c.Resources.Limits {
+			if string(rName) == resourceMemoryName {
+				return rVal.Value()
+			}
+		}
+	}
+	return 0
 }

@@ -15,3 +15,6 @@ go mod tidy
 
 # 编译出适用于 CANN 的 ARM64 架构二进制程序
 go build -ldflags "-s -w -X github.com/Project-HAMi/ascend-device-plugin/version.version=${BUILD_VERSION:-unknown}" -o ./ascend-device-plugin ./cmd/main.go
+
+# 拷贝 beagle-smi-npu 二进制（从 beagle-smi-npu 子模块的 dist 目录）
+cp ../beagle-smi-npu/dist/beagle-smi-npu-linux-arm64 ./beagle-smi-npu

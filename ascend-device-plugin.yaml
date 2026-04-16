@@ -52,8 +52,26 @@ spec:
     spec:
       priorityClassName: "system-node-critical"
       serviceAccountName: hami-ascend
+      initContainers:
+        - name: install-beagle-smi-npu
+          image: registry.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
+          volumeMounts:
+            - name: host-sbin
+              mountPath: /host-sbin
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # 备份原始 npu-smi（只备份一次）
+              if [ ! -f /host-sbin/npu-smi.real ]; then
+                cp /host-sbin/npu-smi /host-sbin/npu-smi.real
+                chmod +x /host-sbin/npu-smi.real
+              fi
+              # 安装 beagle-smi-npu 覆盖原始 npu-smi
+              cp /usr/local/bin/beagle-smi-npu /host-sbin/npu-smi
+              chmod +x /host-sbin/npu-smi
+              echo "beagle-smi-npu 安装完成"
       containers:
-        - image: projecthami/ascend-device-plugin:v1.2.0
+        - image: registry.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
           imagePullPolicy: IfNotPresent
           name: device-plugin
           resources:
@@ -110,5 +128,8 @@ spec:
         - name: ascend-config
           configMap:
             name: hami-scheduler-device
+        - name: host-sbin
+          hostPath:
+            path: /usr/local/sbin
       nodeSelector:
         ascend: "on"
