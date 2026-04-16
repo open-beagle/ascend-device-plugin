@@ -24,8 +24,8 @@ go get github.com/Project-HAMi/ascend-device-plugin/internal/server
 go get huawei.com/npu-exporter
 go get huawei.com/npu-exporter/utils/logger@v0.0.0-00010101000000-000000000000
 
-# 从流水线环境变量捕获传入的版本号
-export VERSION=${BUILD_VERSION:-v1.2.0-beagle}
+# 编译出适用于 CANN 的 ARM64 架构二进制程序
+go build -ldflags "-s -w -X github.com/Project-HAMi/ascend-device-plugin/version.version=${BUILD_VERSION:-unknown}" -o ./ascend-device-plugin ./cmd/main.go
 
-# 遵循官方构建标准，一键调用 Makefile
-make all
+# 拷贝 beagle-smi-npu 二进制（已预置在 dist 目录）
+cp ./dist/beagle-smi-npu ./beagle-smi-npu

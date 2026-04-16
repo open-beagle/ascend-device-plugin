@@ -139,6 +139,9 @@ func (am *AscendManager) CommonWord() string {
 func (am *AscendManager) ResourceName() string {
 	return am.config.ResourceName
 }
+func (am *AscendManager) ResourceMemoryName() string {
+	return am.config.ResourceMemoryName
+}
 
 func (am *AscendManager) CurrentTemplateName() string {
 	if am.currentTemplate != nil {

@@ -10,4 +10,8 @@ ENV LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib6
 COPY ascend-device-plugin /usr/local/bin/ascend-device-plugin
 RUN chmod +x /usr/local/bin/ascend-device-plugin
 
+# 将 beagle-smi-npu 二进制打进镜像，供 initContainer 预置到宿主机
+COPY beagle-smi-npu /usr/local/bin/beagle-smi-npu
+RUN chmod +x /usr/local/bin/beagle-smi-npu
+
 ENTRYPOINT ["ascend-device-plugin"]

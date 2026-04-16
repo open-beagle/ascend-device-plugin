@@ -23,7 +23,7 @@ steps:
   - name: build
     image: registry-vpc.cn-qingdao.aliyuncs.com/wod/golang:1.25
     environment:
-      BUILD_VERSION: v1.2.0-beagle
+      BUILD_VERSION: v1.2.0-smi
     commands:
       - sh .beagle/build.sh
 
@@ -36,7 +36,7 @@ steps:
       base: registry-vpc.cn-qingdao.aliyuncs.com/wod/ubuntu:22.04-arm64
       dockerfile: .beagle/dockerfile
       repo: wod/ascend-device-plugin
-      Version: "v1.2.0" # 请在这里调整最终的版本号
+      Version: "v1.2.0-smi" # 请在这里调整最终的版本号
       channel: arm64
       args: "TARGETOS=linux,TARGETARCH=arm64"
       registry: registry-vpc.cn-qingdao.aliyuncs.com
@@ -65,8 +65,8 @@ steps:
       REGISTRY_PASSWORD:
         from_secret: REGISTRY_PASSWORD_ALIYUN
     settings:
-      source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-arm64
-      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0
+      source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
+      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi
       registry: registry-vpc.cn-qingdao.aliyuncs.com
 
 ---
