@@ -56,17 +56,23 @@ spec:
         - name: install-beagle-smi-npu
           image: registry.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
           volumeMounts:
+            - name: host-beagle-smi
+              mountPath: /host-beagle-smi
             - name: host-sbin
               mountPath: /host-sbin
           command: ["/bin/sh", "-c"]
           args:
             - |
-              # 备份原始 npu-smi（只备份一次）
-              if [ ! -f /host-sbin/npu-smi.real ]; then
-                cp /host-sbin/npu-smi /host-sbin/npu-smi.real
-                chmod +x /host-sbin/npu-smi.real
+              # 创建专用目录
+              mkdir -p /host-beagle-smi
+              # 备份原始 npu-smi 到专用目录（只备份一次）
+              if [ ! -f /host-beagle-smi/npu-smi.real ]; then
+                cp /host-sbin/npu-smi /host-beagle-smi/npu-smi.real
+                chmod +x /host-beagle-smi/npu-smi.real
               fi
-              # 安装 beagle-smi-npu 覆盖原始 npu-smi
+              # 安装 beagle-smi-npu 到专用目录和宿主机 sbin
+              cp /usr/local/bin/beagle-smi-npu /host-beagle-smi/npu-smi
+              chmod +x /host-beagle-smi/npu-smi
               cp /usr/local/bin/beagle-smi-npu /host-sbin/npu-smi
               chmod +x /host-sbin/npu-smi
               echo "beagle-smi-npu 安装完成"
@@ -131,5 +137,9 @@ spec:
         - name: host-sbin
           hostPath:
             path: /usr/local/sbin
+        - name: host-beagle-smi
+          hostPath:
+            path: /opt/beagle-smi
+            type: DirectoryOrCreate
       nodeSelector:
         ascend: "on"
