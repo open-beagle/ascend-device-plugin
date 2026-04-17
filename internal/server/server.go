@@ -470,7 +470,10 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	// 注入显存申请值 env + npu-smi mount
 	memoryMB := getMemoryLimitFromPod(pod, ps.mgr.ResourceMemoryName())
 	if memoryMB > 0 {
-		resp.Envs[ps.mgr.ResourceMemoryName()] = strconv.FormatInt(memoryMB, 10)
+		// 如果 Pod 已经有该 env（平台手动设置的原始值），不覆盖
+		if !podHasEnv(pod, ps.mgr.ResourceMemoryName()) {
+			resp.Envs[ps.mgr.ResourceMemoryName()] = strconv.FormatInt(memoryMB, 10)
+		}
 		resp.Envs["REAL_NPU_SMI_PATH"] = "/opt/beagle-smi/npu-smi.real"
 	}
 	resp.Mounts = append(resp.Mounts,
