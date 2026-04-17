@@ -505,3 +505,14 @@ func getMemoryLimitFromPod(pod *v1.Pod, resourceMemoryName string) int64 {
 	}
 	return 0
 }
+
+func podHasEnv(pod *v1.Pod, envName string) bool {
+	for _, c := range pod.Spec.Containers {
+		for _, e := range c.Env {
+			if e.Name == envName {
+				return true
+			}
+		}
+	}
+	return false
+}
