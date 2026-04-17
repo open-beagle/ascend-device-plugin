@@ -471,17 +471,12 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	memoryMB := getMemoryLimitFromPod(pod, ps.mgr.ResourceMemoryName())
 	if memoryMB > 0 {
 		resp.Envs[ps.mgr.ResourceMemoryName()] = strconv.FormatInt(memoryMB, 10)
-		resp.Envs["REAL_NPU_SMI_PATH"] = "/usr/local/sbin/npu-smi.real"
+		resp.Envs["REAL_NPU_SMI_PATH"] = "/opt/beagle-smi/npu-smi.real"
 	}
 	resp.Mounts = append(resp.Mounts,
 		&v1beta1.Mount{
-			ContainerPath: "/usr/local/sbin/npu-smi",
-			HostPath:      "/usr/local/sbin/npu-smi",
-			ReadOnly:      true,
-		},
-		&v1beta1.Mount{
-			ContainerPath: "/usr/local/sbin/npu-smi.real",
-			HostPath:      "/usr/local/sbin/npu-smi.real",
+			ContainerPath: "/opt/beagle-smi",
+			HostPath:      "/opt/beagle-smi",
 			ReadOnly:      true,
 		},
 	)
