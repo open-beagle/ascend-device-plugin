@@ -73,6 +73,7 @@ spec:
               # 安装 beagle-smi-npu 到专用目录和宿主机 sbin
               cp /usr/local/bin/beagle-smi-npu /host-beagle-smi/npu-smi
               chmod +x /host-beagle-smi/npu-smi
+              rm -f /host-sbin/npu-smi
               cp /usr/local/bin/beagle-smi-npu /host-sbin/npu-smi
               chmod +x /host-sbin/npu-smi
               echo "beagle-smi-npu 安装完成"
