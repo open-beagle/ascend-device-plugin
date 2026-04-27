@@ -10,6 +10,10 @@ ascend-device-plugin 是华为昇腾 NPU 的 Kubernetes Device Plugin，集成�
 - 当前版本：`v1.2.0-smi-arm64`
 - 镜像内容：ascend-device-plugin 二进制 + beagle-smi-npu 二进制
 
+## 部署流程图
+
+![部署流程图](./deploy-flowchart.svg)
+
 ## 构建流程
 
 1. 推送代码到 `dev` 分支，Drone CI 自动触发
