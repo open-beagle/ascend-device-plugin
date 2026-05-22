@@ -33,6 +33,7 @@ import (
 	"github.com/Project-HAMi/HAMi/pkg/util/client"
 	"github.com/Project-HAMi/HAMi/pkg/util/nodelock"
 	"github.com/Project-HAMi/ascend-device-plugin/internal/manager"
+	"github.com/Project-HAMi/ascend-device-plugin/internal/overcommit"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	v1 "k8s.io/api/core/v1"
@@ -56,10 +57,10 @@ var (
 )
 
 type PluginServer struct {
-	nodeName      string
-	registerAnno  string
-	handshakeAnno string
-	allocAnno     string
+	nodeName               string
+	registerAnno           string
+	handshakeAnno          string
+	allocAnno              string
 	grpcServer             *grpc.Server
 	mgr                    *manager.AscendManager
 	socket                 string
@@ -70,10 +71,10 @@ type PluginServer struct {
 
 func NewPluginServer(mgr *manager.AscendManager, nodeName string) (*PluginServer, error) {
 	return &PluginServer{
-		nodeName:      nodeName,
-		registerAnno:  fmt.Sprintf("hami.io/node-register-%s", mgr.CommonWord()),
-		handshakeAnno: fmt.Sprintf("hami.io/node-handshake-%s", mgr.CommonWord()),
-		allocAnno:     fmt.Sprintf("huawei.com/%s", mgr.CommonWord()),
+		nodeName:               nodeName,
+		registerAnno:           fmt.Sprintf("hami.io/node-register-%s", mgr.CommonWord()),
+		handshakeAnno:          fmt.Sprintf("hami.io/node-handshake-%s", mgr.CommonWord()),
+		allocAnno:              fmt.Sprintf("huawei.com/%s", mgr.CommonWord()),
 		grpcServer:             grpc.NewServer(),
 		mgr:                    mgr,
 		socket:                 path.Join(v1beta1.DevicePluginPath, fmt.Sprintf("%s.sock", mgr.CommonWord())),
@@ -244,6 +245,29 @@ func (ps *PluginServer) registerHAMi() error {
 	node, err := util.GetNode(ps.nodeName)
 	if err != nil {
 		return fmt.Errorf("get node %s error: %v", ps.nodeName, err)
+	}
+	if overcommit.Enabled(node.Annotations) {
+		state, ownedIDs, err := ps.collectGPUOvercommitState()
+		if err != nil {
+			klog.ErrorS(err, "collect gpu overcommit state failed")
+			err = ps.patchGPUOvercommitState(func(annotations map[string]string) (string, error) {
+				return overcommit.ClearState(annotations[overcommit.StateAnnotation], ownedIDs)
+			})
+		} else {
+			err = ps.patchGPUOvercommitState(func(annotations map[string]string) (string, error) {
+				return overcommit.MergeState(annotations[overcommit.StateAnnotation], ownedIDs, state)
+			})
+		}
+		if err != nil {
+			klog.ErrorS(err, "patch gpu overcommit state failed")
+		}
+	} else if _, ok := node.Annotations[overcommit.StateAnnotation]; ok {
+		err := ps.patchGPUOvercommitState(func(annotations map[string]string) (string, error) {
+			return overcommit.ClearState(annotations[overcommit.StateAnnotation], ps.gpuOvercommitDeviceIDs())
+		})
+		if err != nil {
+			klog.ErrorS(err, "clear gpu overcommit state failed")
+		}
 	}
 	err = util.PatchNodeAnnotations(node, annos)
 	if err != nil {

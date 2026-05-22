@@ -21,6 +21,7 @@ import (
 	"sort"
 
 	"ascend-common/devmanager"
+	"ascend-common/devmanager/common"
 	"ascend-common/devmanager/dcmi"
 
 	"github.com/Project-HAMi/ascend-device-plugin/internal"
@@ -199,6 +200,10 @@ func (am *AscendManager) UpdateDevice() error {
 
 func (am *AscendManager) GetDevices() []*Device {
 	return am.devs
+}
+
+func (am *AscendManager) GetAICoreUtilization(logicID int32) (uint32, error) {
+	return am.mgr.GetDeviceUtilizationRate(logicID, common.AICore)
 }
 
 func (am *AscendManager) GetDeviceByUUID(UUID string) *Device {
