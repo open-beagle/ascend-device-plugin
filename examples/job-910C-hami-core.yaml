@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ascend910c-hami-core-job
+  annotations:
+    huawei.com/vnpu-mode: hami-core
+spec:
+  containers:
+    - name: ubuntu-container
+      image: ascendhub.huawei.com/public-ascendhub/ascend-mindspore:23.0.RC3-centos7
+      command: ["bash", "-c", "sleep 86400"]
+      resources:
+        limits:
+          huawei.com/Ascend910C: 1
+          huawei.com/Ascend910C-memory: 20480
+          huawei.com/Ascend910C-core: 40
+---
+# Node requirements:
+# 1) device-config hamiVnpuCore: true  (plugin writes hami-vnpu-core=true), OR
+# 2) manually annotate node: hami-vnpu-core=true
+# Soft-split also needs hami-vnpu-core runtime/limiter on the node for real compute isolation.

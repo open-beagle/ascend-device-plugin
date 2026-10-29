@@ -54,7 +54,7 @@ spec:
       serviceAccountName: hami-ascend
       initContainers:
         - name: install-beagle-smi-npu
-          image: registry.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
+          image: registry.cn-qingdao.aliyuncs.com/wod/hami:v2.6.5-cann
           volumeMounts:
             - name: host-beagle-smi
               mountPath: /host-beagle-smi
@@ -78,7 +78,7 @@ spec:
               chmod +x /host-sbin/npu-smi
               echo "beagle-smi-npu 安装完成"
       containers:
-        - image: registry.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
+        - image: registry.cn-qingdao.aliyuncs.com/wod/hami:v2.6.5-cann
           imagePullPolicy: IfNotPresent
           name: device-plugin
           resources:

@@ -28,10 +28,10 @@ import (
 	"time"
 
 	"github.com/Project-HAMi/HAMi/pkg/device"
-	"github.com/Project-HAMi/HAMi/pkg/device/ascend"
 	"github.com/Project-HAMi/HAMi/pkg/util"
 	"github.com/Project-HAMi/HAMi/pkg/util/client"
 	"github.com/Project-HAMi/HAMi/pkg/util/nodelock"
+	"github.com/Project-HAMi/ascend-device-plugin/internal"
 	"github.com/Project-HAMi/ascend-device-plugin/internal/manager"
 	"github.com/Project-HAMi/ascend-device-plugin/internal/overcommit"
 	"google.golang.org/grpc"
@@ -242,6 +242,10 @@ func (ps *PluginServer) registerHAMi() error {
 	annos := make(map[string]string)
 	annos[ps.registerAnno] = device.MarshalNodeDevices(apiDevices)
 	annos[ps.handshakeAnno] = "Reported_" + time.Now().Add(time.Duration(*reportTimeOffset)*time.Second).Format("2006.01.02 15:04:05")
+	// Advertise soft-split support so HAMi scheduler can place hami-core pods here.
+	if ps.mgr.HamiVnpuCoreEnabled() {
+		annos[internal.VNPUNodeSelectorAnnotation] = "true"
+	}
 	node, err := util.GetNode(ps.nodeName)
 	if err != nil {
 		return fmt.Errorf("get node %s error: %v", ps.nodeName, err)
@@ -375,33 +379,35 @@ func (ps *PluginServer) applySplitCountFromNode(node *v1.Node) {
 	}
 }
 
-func (ps *PluginServer) parsePodAnnotation(pod *v1.Pod) ([]int32, []string, error) {
+func (ps *PluginServer) parsePodAnnotation(pod *v1.Pod) ([]int32, []string, []internal.AllocRuntimeInfo, error) {
 	anno, ok := pod.Annotations[ps.allocAnno]
 	if !ok {
-		return nil, nil, fmt.Errorf("annotation %s not set", "huawei.com/Ascend")
+		return nil, nil, nil, fmt.Errorf("annotation %s not set", "huawei.com/Ascend")
 	}
-	var rtInfo []ascend.RuntimeInfo
+	var rtInfo []internal.AllocRuntimeInfo
 	err := json.Unmarshal([]byte(anno), &rtInfo)
 	if err != nil {
-		return nil, nil, fmt.Errorf("annotation %s value %s invalid", ps.allocAnno, anno)
+		return nil, nil, nil, fmt.Errorf("annotation %s value %s invalid", ps.allocAnno, anno)
 	}
 	var IDs []int32
 	var temps []string
+	var infos []internal.AllocRuntimeInfo
 	for _, info := range rtInfo {
 		if info.UUID == "" {
 			continue
 		}
 		d := ps.mgr.GetDeviceByUUID(info.UUID)
 		if d == nil {
-			return nil, nil, fmt.Errorf("unknown uuid: %s", info.UUID)
+			return nil, nil, nil, fmt.Errorf("unknown uuid: %s", info.UUID)
 		}
 		IDs = append(IDs, d.PhyID)
 		temps = append(temps, info.Temp)
+		infos = append(infos, info)
 	}
 	if len(IDs) == 0 {
-		return nil, nil, fmt.Errorf("annotation %s value %s invalid", ps.allocAnno, anno)
+		return nil, nil, nil, fmt.Errorf("annotation %s value %s invalid", ps.allocAnno, anno)
 	}
-	return IDs, temps, nil
+	return IDs, temps, infos, nil
 }
 
 func (ps *PluginServer) apiDevices() []*v1beta1.Device {
@@ -464,7 +470,7 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 		return nil, fmt.Errorf("get pending pod error: %v", err)
 	}
 	resp := v1beta1.ContainerAllocateResponse{}
-	IDs, temps, err := ps.parsePodAnnotation(pod)
+	IDs, temps, infos, err := ps.parsePodAnnotation(pod)
 	if err != nil {
 		return nil, fmt.Errorf("parse pod annotation error: %v", err)
 	}
@@ -476,36 +482,67 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	for i := 1; i < len(IDs); i++ {
 		ascendVisibleDevices = fmt.Sprintf("%s,%d", ascendVisibleDevices, IDs[i])
 	}
-	// Determine if this is a whole-card allocation (all temps empty) or vNPU allocation.
-	// Only set ASCEND_VNPU_SPECS when we are in vNPU mode.
+	hamiCore := internal.IsHAMiCorePod(pod)
+	// Hard-split vNPU: set ASCEND_VNPU_SPECS from RuntimeInfo.Temp.
+	// Soft-split (hami-core): do NOT set VNPU template specs.
 	hasAnyTemp := false
-	for i := 0; i < len(temps); i++ {
-		if temps[i] != "" {
-			ascendVNPUSpec = temps[i]
-			hasAnyTemp = true
-			break
+	if !hamiCore {
+		for i := 0; i < len(temps); i++ {
+			if temps[i] != "" {
+				ascendVNPUSpec = temps[i]
+				hasAnyTemp = true
+				break
+			}
 		}
 	}
 	resp.Envs = make(map[string]string)
 	resp.Envs["ASCEND_VISIBLE_DEVICES"] = ascendVisibleDevices
-	// Fallback to CurrentTemplateName only when in vNPU mode (at least one temp was expected
-	// but not matched). Do NOT fallback for whole-card allocation (all temps empty).
-	if ascendVNPUSpec == "" && hasAnyTemp && ps.mgr.CurrentTemplateName() != "" {
+	// Fallback to CurrentTemplateName only for hard-split vNPU (at least one temp expected).
+	if !hamiCore && ascendVNPUSpec == "" && hasAnyTemp && ps.mgr.CurrentTemplateName() != "" {
 		ascendVNPUSpec = ps.mgr.CurrentTemplateName()
 	}
 	if ascendVNPUSpec != "" {
 		resp.Envs["ASCEND_VNPU_SPECS"] = ascendVNPUSpec
 	}
 
-	// 注入显存申请值 env + npu-smi mount
-	memoryMB := getMemoryLimitFromPod(pod, ps.mgr.ResourceMemoryName())
+	// Memory: prefer RuntimeInfo.Memory (scheduler-patched), else pod limits.
+	memoryMB := int64(0)
+	for _, info := range infos {
+		if info.Memory > 0 {
+			memoryMB = info.Memory
+			break
+		}
+	}
+	if memoryMB <= 0 {
+		memoryMB = internal.GetResourceLimitFromPod(pod, ps.mgr.ResourceMemoryName())
+	}
 	if memoryMB > 0 {
-		// 如果 Pod 已经有该 env（平台手动设置的原始值），不覆盖
-		if !podHasEnv(pod, ps.mgr.ResourceMemoryName()) {
+		if !internal.PodHasEnv(pod, ps.mgr.ResourceMemoryName()) {
 			resp.Envs[ps.mgr.ResourceMemoryName()] = strconv.FormatInt(memoryMB, 10)
 		}
 		resp.Envs["REAL_NPU_SMI_PATH"] = "/opt/beagle-smi/npu-smi.real"
 	}
+
+	// Soft-split: inject core percentage from RuntimeInfo or pod limits.
+	if hamiCore {
+		corePct := int32(0)
+		for _, info := range infos {
+			if info.Core > 0 {
+				corePct = info.Core
+				break
+			}
+		}
+		if corePct <= 0 {
+			corePct = int32(internal.GetResourceLimitFromPod(pod, ps.mgr.ResourceCoreName()))
+		}
+		coreName := ps.mgr.ResourceCoreName()
+		if coreName != "" && corePct > 0 && !internal.PodHasEnv(pod, coreName) {
+			resp.Envs[coreName] = strconv.FormatInt(int64(corePct), 10)
+		}
+		resp.Envs["HAMI_VNPU_MODE"] = internal.VNPUModeHamiCore
+		klog.V(4).InfoS("allocate hami-core soft-split", "pod", klog.KObj(pod), "memoryMB", memoryMB, "core", corePct)
+	}
+
 	resp.Mounts = append(resp.Mounts,
 		&v1beta1.Mount{
 			ContainerPath: "/opt/beagle-smi",
@@ -521,28 +558,4 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 
 func (ps *PluginServer) PreStartContainer(context.Context, *v1beta1.PreStartContainerRequest) (*v1beta1.PreStartContainerResponse, error) {
 	return &v1beta1.PreStartContainerResponse{}, nil
-}
-func getMemoryLimitFromPod(pod *v1.Pod, resourceMemoryName string) int64 {
-	if resourceMemoryName == "" {
-		return 0
-	}
-	for _, c := range pod.Spec.Containers {
-		for rName, rVal := range c.Resources.Limits {
-			if string(rName) == resourceMemoryName {
-				return rVal.Value()
-			}
-		}
-	}
-	return 0
-}
-
-func podHasEnv(pod *v1.Pod, envName string) bool {
-	for _, c := range pod.Spec.Containers {
-		for _, e := range c.Env {
-			if e.Name == envName {
-				return true
-			}
-		}
-	}
-	return false
 }

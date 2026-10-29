@@ -34,15 +34,35 @@ type VNPUConfig struct {
 	ChipName           string     `json:"chipName"`
 	ResourceName       string     `json:"resourceName"`
 	ResourceMemoryName string     `json:"resourceMemoryName"`
+	ResourceCoreName   string     `json:"resourceCoreName"`
 	MemoryAllocatable  int64      `json:"memoryAllocatable"`
 	MemoryCapacity     int64      `json:"memoryCapacity"`
 	AICore             int32      `json:"aiCore"`
 	AICPU              int32      `json:"aiCPU"`
 	Templates          []Template `json:"templates"`
+	// SuperPod is consumed by HAMi scheduler; kept here for config parity.
+	SuperPod bool `json:"superPod"`
 }
 
+// AllocRuntimeInfo mirrors HAMi ascend.RuntimeInfo for Allocate annotation parsing.
+// Local struct avoids depending on HAMi module version for Memory/Core fields.
+type AllocRuntimeInfo struct {
+	UUID   string `json:"UUID,omitempty"`
+	Temp   string `json:"temp,omitempty"`
+	Memory int64  `json:"memory,omitempty"`
+	Core   int32  `json:"core,omitempty"`
+}
+
+const (
+	VNPUModeAnnotation         = "huawei.com/vnpu-mode"
+	VNPUModeHamiCore           = "hami-core"
+	VNPUNodeSelectorAnnotation = "hami-vnpu-core"
+)
+
 type Config struct {
-	VNPUs []VNPUConfig `json:"vnpus"`
+	// HamiVnpuCore enables soft-split by default on this node (writes hami-vnpu-core=true).
+	HamiVnpuCore bool         `json:"hamiVnpuCore"`
+	VNPUs        []VNPUConfig `json:"vnpus"`
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -4,6 +4,7 @@ name: Build Hami Device Plugin for Ascend
 trigger:
   branch:
     - main
+    - v2.6.5
 
 volumes:
   - name: docker
@@ -54,7 +55,7 @@ steps:
         from_secret: REGISTRY_PASSWORD_ALIYUN
     settings:
       source: registry-vpc.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin:v1.2.0-smi-arm64
-      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/hami:v2.6.3-cann
+      target: registry-vpc.cn-qingdao.aliyuncs.com/wod/hami:v2.6.5-cann
       registry: registry-vpc.cn-qingdao.aliyuncs.com
 
 ---

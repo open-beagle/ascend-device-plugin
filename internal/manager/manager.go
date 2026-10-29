@@ -43,6 +43,7 @@ type AscendManager struct {
 	mgr *devmanager.DeviceManager
 	//nodeName string
 	config          internal.VNPUConfig
+	hamiVnpuCore    bool
 	devs            []*Device
 	vDeviceCount    int
 	currentTemplate *internal.Template
@@ -82,10 +83,11 @@ func (am *AscendManager) LoadConfig(path string) error {
 		return fmt.Errorf("can not find vnpu config for chip %s", chipInfo.Name)
 	}
 	am.config = config.VNPUs[idx]
+	am.hamiVnpuCore = config.HamiVnpuCore
 	sort.Slice(am.config.Templates, func(i, j int) bool {
 		return am.config.Templates[i].Memory < am.config.Templates[j].Memory
 	})
-	klog.Infof("load config: %v", am.config)
+	klog.Infof("load config: %v (hamiVnpuCore=%v)", am.config, am.hamiVnpuCore)
 	am.ApplySplitCount(0) // 0 implies default split logic
 	return nil
 }
@@ -142,6 +144,14 @@ func (am *AscendManager) ResourceName() string {
 }
 func (am *AscendManager) ResourceMemoryName() string {
 	return am.config.ResourceMemoryName
+}
+
+func (am *AscendManager) ResourceCoreName() string {
+	return am.config.ResourceCoreName
+}
+
+func (am *AscendManager) HamiVnpuCoreEnabled() bool {
+	return am.hamiVnpuCore
 }
 
 func (am *AscendManager) CurrentTemplateName() string {
