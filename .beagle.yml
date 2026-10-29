@@ -37,7 +37,7 @@ steps:
       base: registry-vpc.cn-qingdao.aliyuncs.com/wod/ubuntu:22.04-arm64
       dockerfile: .beagle/dockerfile
       repo: wod/ascend-device-plugin
-      Version: "v1.2.0-smi" # 请在这里调整最终的版本�?      channel: arm64
+      Version: "v1.2.0-smi" # 璇峰湪杩欓噷璋冩暣鏈€缁堢殑鐗堟湰鍙?      channel: arm64
       args: "TARGETOS=linux,TARGETARCH=arm64"
       registry: registry-vpc.cn-qingdao.aliyuncs.com
       registry_user:
