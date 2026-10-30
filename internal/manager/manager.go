@@ -42,11 +42,12 @@ type Device struct {
 type AscendManager struct {
 	mgr *devmanager.DeviceManager
 	//nodeName string
-	config          internal.VNPUConfig
-	hamiVnpuCore    bool
-	devs            []*Device
-	vDeviceCount    int
-	currentTemplate *internal.Template
+	config               internal.VNPUConfig
+	hamiVnpuCore         bool
+	injectPackageSibling bool
+	devs                 []*Device
+	vDeviceCount         int
+	currentTemplate      *internal.Template
 }
 
 func NewAscendManager() (*AscendManager, error) {
@@ -84,10 +85,11 @@ func (am *AscendManager) LoadConfig(path string) error {
 	}
 	am.config = config.VNPUs[idx]
 	am.hamiVnpuCore = config.HamiVnpuCore
+	am.injectPackageSibling = config.PackageSiblingEnabled()
 	sort.Slice(am.config.Templates, func(i, j int) bool {
 		return am.config.Templates[i].Memory < am.config.Templates[j].Memory
 	})
-	klog.Infof("load config: %v (hamiVnpuCore=%v)", am.config, am.hamiVnpuCore)
+	klog.Infof("load config: %v (hamiVnpuCore=%v injectPackageSibling=%v)", am.config, am.hamiVnpuCore, am.injectPackageSibling)
 	am.ApplySplitCount(0) // 0 implies default split logic
 	return nil
 }
@@ -152,6 +154,23 @@ func (am *AscendManager) ResourceCoreName() string {
 
 func (am *AscendManager) HamiVnpuCoreEnabled() bool {
 	return am.hamiVnpuCore
+}
+
+func (am *AscendManager) InjectPackageSiblingEnabled() bool {
+	return am.injectPackageSibling
+}
+
+// DevicePhyInfos returns CardID/PhyID topology for package-sibling expansion.
+func (am *AscendManager) DevicePhyInfos() []internal.DevicePhyInfo {
+	devs := am.devs
+	out := make([]internal.DevicePhyInfo, 0, len(devs))
+	for _, d := range devs {
+		if d == nil {
+			continue
+		}
+		out = append(out, internal.DevicePhyInfo{PhyID: d.PhyID, CardID: d.CardID})
+	}
+	return out
 }
 
 func (am *AscendManager) CurrentTemplateName() string {

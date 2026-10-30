@@ -22,9 +22,27 @@ import (
 	"testing"
 )
 
+func TestPackageSiblingEnabled_DefaultTrue(t *testing.T) {
+	cfg := &Config{}
+	if !cfg.PackageSiblingEnabled() {
+		t.Fatal("expected default injectPackageSibling=true when omitted")
+	}
+	off := false
+	cfg.InjectPackageSibling = &off
+	if cfg.PackageSiblingEnabled() {
+		t.Fatal("expected injectPackageSibling=false when explicitly disabled")
+	}
+	on := true
+	cfg.InjectPackageSibling = &on
+	if !cfg.PackageSiblingEnabled() {
+		t.Fatal("expected injectPackageSibling=true when explicitly enabled")
+	}
+}
+
 func TestLoadConfig_910CTemplatesAndCore(t *testing.T) {
 	content := `
 hamiVnpuCore: true
+injectPackageSibling: false
 vnpus:
 - chipName: Ascend910
   commonWord: Ascend910C
@@ -57,6 +75,9 @@ vnpus:
 	}
 	if !cfg.HamiVnpuCore {
 		t.Fatal("expected hamiVnpuCore=true")
+	}
+	if cfg.PackageSiblingEnabled() {
+		t.Fatal("expected injectPackageSibling=false from yaml")
 	}
 	if len(cfg.VNPUs) != 1 {
 		t.Fatalf("vnpus len=%d", len(cfg.VNPUs))

@@ -61,8 +61,21 @@ const (
 
 type Config struct {
 	// HamiVnpuCore enables soft-split by default on this node (writes hami-vnpu-core=true).
-	HamiVnpuCore bool         `json:"hamiVnpuCore"`
-	VNPUs        []VNPUConfig `json:"vnpus"`
+	HamiVnpuCore bool `json:"hamiVnpuCore"`
+	// InjectPackageSibling expands ASCEND_VISIBLE_DEVICES to include sibling dies on the
+	// same CardID (A3 dual-die package). Default true when omitted, so npu-smi board-type
+	// queries work in single-die allocated containers. Set false to keep strict single-die visibility.
+	InjectPackageSibling *bool        `json:"injectPackageSibling,omitempty"`
+	VNPUs                []VNPUConfig `json:"vnpus"`
+}
+
+// PackageSiblingEnabled returns whether Allocate should inject sibling dies of a package.
+// Default is true when the field is omitted.
+func (c *Config) PackageSiblingEnabled() bool {
+	if c == nil || c.InjectPackageSibling == nil {
+		return true
+	}
+	return *c.InjectPackageSibling
 }
 
 func LoadConfig(path string) (*Config, error) {

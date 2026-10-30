@@ -477,10 +477,19 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 	if len(IDs) == 0 {
 		return nil, fmt.Errorf("empty id from pod annotation")
 	}
-	ascendVisibleDevices := fmt.Sprintf("%d", IDs[0])
+	visibleIDs := IDs
+	if ps.mgr.InjectPackageSiblingEnabled() {
+		expanded := internal.ExpandPackagePhyIDs(ps.mgr.DevicePhyInfos(), IDs)
+		if len(expanded) > len(IDs) {
+			klog.V(4).InfoS("inject package sibling dies into ASCEND_VISIBLE_DEVICES",
+				"pod", klog.KObj(pod), "allocated", IDs, "visible", expanded)
+		}
+		visibleIDs = expanded
+	}
+	ascendVisibleDevices := fmt.Sprintf("%d", visibleIDs[0])
 	ascendVNPUSpec := ""
-	for i := 1; i < len(IDs); i++ {
-		ascendVisibleDevices = fmt.Sprintf("%s,%d", ascendVisibleDevices, IDs[i])
+	for i := 1; i < len(visibleIDs); i++ {
+		ascendVisibleDevices = fmt.Sprintf("%s,%d", ascendVisibleDevices, visibleIDs[i])
 	}
 	hamiCore := internal.IsHAMiCorePod(pod)
 	// Hard-split vNPU: set ASCEND_VNPU_SPECS from RuntimeInfo.Temp.

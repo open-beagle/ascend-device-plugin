@@ -11,6 +11,9 @@ data:
   device-config.yaml: |-
     # When true, plugin registers node annotation hami-vnpu-core=true for soft-split.
     hamiVnpuCore: false
+    # When true (default), Allocate expands ASCEND_VISIBLE_DEVICES with sibling dies on the
+    # same CardID so npu-smi board-type works on A3 dual-die packages. Set false for strict isolation.
+    injectPackageSibling: true
     vnpus:
     - chipName: 910A
       commonWord: Ascend910A
