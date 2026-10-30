@@ -529,7 +529,8 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 		if !internal.PodHasEnv(pod, ps.mgr.ResourceMemoryName()) {
 			resp.Envs[ps.mgr.ResourceMemoryName()] = strconv.FormatInt(memoryMB, 10)
 		}
-		resp.Envs["REAL_NPU_SMI_PATH"] = "/opt/beagle-smi/npu-smi.real"
+		// beagle-npu-smi 作为独立命令调用原生 npu-smi，不覆盖宿主机 npu-smi
+		resp.Envs["REAL_NPU_SMI_PATH"] = "/usr/local/sbin/npu-smi"
 	}
 
 	// Soft-split: inject core percentage from RuntimeInfo or pod limits.
@@ -552,6 +553,9 @@ func (ps *PluginServer) Allocate(ctx context.Context, reqs *v1beta1.AllocateRequ
 		klog.V(4).InfoS("allocate hami-core soft-split", "pod", klog.KObj(pod), "memoryMB", memoryMB, "core", corePct)
 	}
 
+	// 不在此挂载宿主机 beagle-npu-smi 文件：文件不存在会导致 Pod 启动失败。
+	// 业务侧（cps-api）通过 initContainer 从镜像拷贝进 emptyDir 注入独立命令。
+	// 仍可只读挂载工具目录（DirectoryOrCreate 后可为空），供节点已预置时使用。
 	resp.Mounts = append(resp.Mounts,
 		&v1beta1.Mount{
 			ContainerPath: "/opt/beagle-smi",

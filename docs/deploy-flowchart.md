@@ -6,21 +6,21 @@
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                              整体部署流程                                        │
 │                                                                                 │
-│  ① beagle-smi-npu 编译  →  ② 二进制拷贝到 ascend-device-plugin                  │
+│  ① beagle-npu-smi 编译  →  ② 二进制拷贝到 ascend-device-plugin                  │
 │          ↓                            ↓                                         │
 │  ③ ascend-device-plugin 编译 + 打包镜像  →  ④ kubectl apply 部署到 K8s           │
 │                                                    ↓                            │
 │                                       ⑤ DaemonSet 在节点上运行                   │
 │                                            ↓                                    │
-│                                  ⑥ initContainer 安装 beagle-smi-npu 到宿主机    │
+│                                  ⑥ initContainer 安装 beagle-npu-smi 到宿主机    │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 二、beagle-smi-npu 编译 & 二进制传递流程
+## 二、beagle-npu-smi 编译 & 二进制传递流程
 
 ```
 ┌──────────────────────────────────────┐
-│     beagle-smi-npu 项目 (子模块)      │
+│  beagle-smi-npu 项目 (命令名新名)     │
 │                                      │
 │  源码目录:                            │
 │    beagle-smi-npu/                   │
@@ -34,13 +34,13 @@
 │                                      │
 │  编译产物:                            │
 │    beagle-smi-npu/dist/              │
-│    ├── beagle-smi-npu-linux-arm64    │
-│    └── beagle-smi-npu-linux-amd64    │
+│    ├── beagle-npu-smi-linux-arm64    │
+│    └── beagle-npu-smi-linux-amd64    │
 └──────────────┬───────────────────────┘
                │
                │  手动拷贝 (cp 命令)
-               │  cp dist/beagle-smi-npu-linux-arm64 \
-               │     ../ascend-device-plugin/dist/beagle-smi-npu
+               │  cp dist/beagle-npu-smi-linux-arm64 \
+               │     ../ascend-device-plugin/dist/beagle-npu-smi
                ▼
 ┌──────────────────────────────────────┐
 │   ascend-device-plugin 项目          │
@@ -48,7 +48,7 @@
 │  二进制存放位置:                       │
 │    ascend-device-plugin/             │
 │    └── dist/                         │
-│        └── beagle-smi-npu  ◄── 这里  │
+│        └── beagle-npu-smi  ◄── 这里  │
 │                                      │
 └──────────────────────────────────────┘
 ```
@@ -60,12 +60,12 @@
 │                    CI 流水线 (.beagle/build.sh)                      │
 │                                                                     │
 │  1. go build → 编译 ascend-device-plugin 二进制                      │
-│  2. cp ./dist/beagle-smi-npu ./beagle-smi-npu                      │
-│     (将预置的 beagle-smi-npu 拷贝到构建根目录)                        │
+│  2. cp ./dist/beagle-npu-smi ./beagle-npu-smi                      │
+│     (将预置的 beagle-npu-smi 拷贝到构建根目录)                        │
 │                                                                     │
 │  构建根目录产物:                                                      │
 │    ./ascend-device-plugin    ← Go 编译产物                           │
-│    ./beagle-smi-npu          ← 从 dist/ 拷贝来的                     │
+│    ./beagle-npu-smi          ← 从 dist/ 拷贝来的                     │
 └────────────────────────┬────────────────────────────────────────────┘
                          │
                          ▼
@@ -75,11 +75,11 @@
 │  FROM ubuntu:22.04                                                  │
 │                                                                     │
 │  COPY ascend-device-plugin /usr/local/bin/ascend-device-plugin      │
-│  COPY beagle-smi-npu       /usr/local/bin/beagle-smi-npu           │
+│  COPY beagle-npu-smi       /usr/local/bin/beagle-npu-smi           │
 │                                                                     │
 │  镜像内文件:                                                         │
 │    /usr/local/bin/ascend-device-plugin  ← 主程序                     │
-│    /usr/local/bin/beagle-smi-npu       ← SMI 替换工具                │
+│    /usr/local/bin/beagle-npu-smi       ← 独立配额查询 CLI            │
 │                                                                     │
 │  镜像地址:                                                           │
 │    registry.cn-qingdao.aliyuncs.com/wod/ascend-device-plugin        │
@@ -119,34 +119,33 @@
 │  ┌───────────────────────────────────────────────────────────┐      │
 │  │  Pod: hami-ascend-device-plugin                           │      │
 │  │                                                           │      │
-│  │  Step 1: initContainer (install-beagle-smi-npu)           │      │
+│  │  Step 1: initContainer (install-beagle-npu-smi)           │      │
 │  │  ┌─────────────────────────────────────────────────────┐  │      │
 │  │  │ 1. mkdir -p /opt/beagle-smi (宿主机)                │  │      │
-│  │  │ 2. 备份原始 npu-smi:                                │  │      │
-│  │  │    cp /usr/local/sbin/npu-smi                       │  │      │
-│  │  │       → /opt/beagle-smi/npu-smi.real (仅首次)       │  │      │
-│  │  │ 3. 安装 beagle-smi-npu:                             │  │      │
-│  │  │    镜像内 /usr/local/bin/beagle-smi-npu             │  │      │
-│  │  │       → /opt/beagle-smi/npu-smi (宿主机)            │  │      │
-│  │  │       → /usr/local/sbin/npu-smi (宿主机，替换原始)   │  │      │
+│  │  │ 2. 若有 npu-smi.real：恢复原生 /usr/local/sbin/npu-smi │    │
+│  │  │ 3. 安装独立命令 beagle-npu-smi（不覆盖 npu-smi）:     │  │      │
+│  │  │    镜像内 /usr/local/bin/beagle-npu-smi             │  │      │
+│  │  │       → /opt/beagle-smi/beagle-npu-smi              │  │      │
+│  │  │       → /usr/local/sbin/beagle-npu-smi              │  │      │
 │  │  └─────────────────────────────────────────────────────┘  │      │
 │  │                                                           │      │
 │  │  Step 2: 主容器 (device-plugin)                           │      │
 │  │  ┌─────────────────────────────────────────────────────┐  │      │
 │  │  │ 1. 注册 Device Plugin 到 kubelet                    │  │      │
 │  │  │ 2. Allocate 时自动注入到用户 Pod:                    │  │      │
-│  │  │    - env: huawei.com/Ascend910B2-memory             │  │      │
-│  │  │    - env: REAL_NPU_SMI_PATH=/opt/beagle-smi/...     │  │      │
-│  │  │    - mount: /opt/beagle-smi (hostPath)              │  │      │
+│  │  │    - env: huawei.com/Ascend*-memory                 │  │      │
+│  │  │    - env: REAL_NPU_SMI_PATH=/usr/local/sbin/npu-smi │  │      │
+│  │  │    - mount: /opt/beagle-smi                         │  │      │
+│  │  │    - mount: /usr/local/bin/beagle-npu-smi           │  │      │
 │  │  └─────────────────────────────────────────────────────┘  │      │
 │  └───────────────────────────────────────────────────────────┘      │
 │                                                                     │
 │  宿主机文件结构:                                                     │
 │    /opt/beagle-smi/                                                 │
-│    ├── npu-smi       ← beagle-smi-npu (替换版)                      │
-│    └── npu-smi.real  ← 原始 npu-smi (备份)                          │
+│    └── beagle-npu-smi ← 独立配额查询命令                            │
 │    /usr/local/sbin/                                                 │
-│    └── npu-smi       ← beagle-smi-npu (替换版，全局可用)             │
+│    ├── npu-smi         ← 华为原生命令（未覆盖）                      │
+│    └── beagle-npu-smi  ← 独立命令（PATH 可用）                       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -154,12 +153,11 @@
 
 | 阶段 | 文件 | 路径 |
 |------|------|------|
-| beagle-smi-npu 编译产物 | arm64 二进制 | `beagle-smi-npu/dist/beagle-smi-npu-linux-arm64` |
-| 拷贝到 ascend-device-plugin | 预置二进制 | `ascend-device-plugin/dist/beagle-smi-npu` |
-| CI 构建时拷贝到根目录 | 构建临时文件 | `./beagle-smi-npu` (构建根目录) |
+| beagle-npu-smi 编译产物 | arm64 二进制 | `beagle-smi-npu/dist/beagle-npu-smi-linux-arm64` |
+| 拷贝到 ascend-device-plugin | 预置二进制 | `ascend-device-plugin/dist/beagle-npu-smi` |
+| CI 构建时拷贝到根目录 | 构建临时文件 | `./beagle-npu-smi` (构建根目录) |
 | Docker 镜像内 | 主程序 | `/usr/local/bin/ascend-device-plugin` |
-| Docker 镜像内 | SMI 工具 | `/usr/local/bin/beagle-smi-npu` |
+| Docker 镜像内 | 配额查询 CLI | `/usr/local/bin/beagle-npu-smi` |
 | K8s 部署 YAML | 部署清单 | `kubectl apply -f ascend-device-plugin.yaml` |
-| 宿主机 | beagle-smi-npu | `/opt/beagle-smi/npu-smi` |
-| 宿主机 | 原始 npu-smi 备份 | `/opt/beagle-smi/npu-smi.real` |
-| 宿主机 | 全局 npu-smi (替换) | `/usr/local/sbin/npu-smi` |
+| 宿主机 | beagle-npu-smi | `/opt/beagle-smi/beagle-npu-smi` |
+| 宿主机 | 原生 npu-smi | `/usr/local/sbin/npu-smi` |

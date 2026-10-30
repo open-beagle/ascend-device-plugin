@@ -53,7 +53,7 @@ spec:
       priorityClassName: "system-node-critical"
       serviceAccountName: hami-ascend
       initContainers:
-        - name: install-beagle-smi-npu
+        - name: install-beagle-npu-smi
           image: registry.cn-qingdao.aliyuncs.com/wod/hami:v2.6.5-cann
           volumeMounts:
             - name: host-beagle-smi
@@ -63,20 +63,28 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              # 创建专用目录
+              # 独立命令模式：只安装 beagle-npu-smi，不覆盖原生 npu-smi
               mkdir -p /host-beagle-smi
-              # 备份原始 npu-smi 到专用目录（只备份一次）
-              if [ ! -f /host-beagle-smi/npu-smi.real ]; then
+              # 若历史版本曾覆盖过 npu-smi，从备份恢复原生命令
+              if [ -f /host-beagle-smi/npu-smi.real ]; then
+                cp /host-beagle-smi/npu-smi.real /host-sbin/npu-smi
+                chmod +x /host-sbin/npu-smi
+              elif [ -f /host-sbin/npu-smi ] && [ ! -f /host-beagle-smi/npu-smi.real ]; then
+                # 可选备份，便于回滚排查；查询仍走原生 /usr/local/sbin/npu-smi
                 cp /host-sbin/npu-smi /host-beagle-smi/npu-smi.real
                 chmod +x /host-beagle-smi/npu-smi.real
               fi
-              # 安装 beagle-smi-npu 到专用目录和宿主机 sbin
-              cp /usr/local/bin/beagle-smi-npu /host-beagle-smi/npu-smi
-              chmod +x /host-beagle-smi/npu-smi
-              rm -f /host-sbin/npu-smi
-              cp /usr/local/bin/beagle-smi-npu /host-sbin/npu-smi
-              chmod +x /host-sbin/npu-smi
-              echo "beagle-smi-npu 安装完成"
+              SRC=/usr/local/bin/beagle-npu-smi
+              if [ ! -f "$SRC" ] && [ -f /usr/local/bin/beagle-smi-npu ]; then
+                SRC=/usr/local/bin/beagle-smi-npu
+              fi
+              cp "$SRC" /host-beagle-smi/beagle-npu-smi
+              chmod +x /host-beagle-smi/beagle-npu-smi
+              cp "$SRC" /host-sbin/beagle-npu-smi
+              chmod +x /host-sbin/beagle-npu-smi
+              # 清理旧版残留（覆盖 npu-smi / 旧命令名）
+              rm -f /host-beagle-smi/npu-smi /host-beagle-smi/beagle-smi-npu /host-sbin/beagle-smi-npu
+              echo "beagle-npu-smi installed as independent command; npu-smi untouched"
       containers:
         - image: registry.cn-qingdao.aliyuncs.com/wod/hami:v2.6.5-cann
           imagePullPolicy: IfNotPresent

@@ -27,5 +27,12 @@ go get huawei.com/npu-exporter/utils/logger@v0.0.0-00010101000000-000000000000
 # 编译出适用于 CANN 的 ARM64 架构二进制程序
 go build -ldflags "-s -w -X github.com/Project-HAMi/ascend-device-plugin/version.version=${BUILD_VERSION:-unknown}" -o ./ascend-device-plugin ./cmd/main.go
 
-# 拷贝 beagle-smi-npu 二进制（已预置在 dist 目录）
-cp ./dist/beagle-smi-npu ./beagle-smi-npu
+# 拷贝 beagle-npu-smi 二进制（已预置在 dist 目录；兼容旧文件名）
+if [ -f ./dist/beagle-npu-smi ]; then
+  cp ./dist/beagle-npu-smi ./beagle-npu-smi
+elif [ -f ./dist/beagle-smi-npu ]; then
+  cp ./dist/beagle-smi-npu ./beagle-npu-smi
+else
+  echo "missing dist/beagle-npu-smi" >&2
+  exit 1
+fi
